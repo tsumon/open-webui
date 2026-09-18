@@ -7,6 +7,7 @@
 	import { blobToFile } from '$lib/utils';
 	import { generateEmoji } from '$lib/apis';
 	import { synthesizeOpenAISpeech, transcribeAudio } from '$lib/apis/audio';
+	import { cacheAudioResult, type CachedAudio } from './audio-cache';
 
 	import { toast } from 'svelte-sonner';
 
@@ -498,7 +499,7 @@
 	let audioAbortController = new AbortController();
 
 	// Audio cache map where key is the content and value is the Audio object.
-	const audioCache = new Map();
+	const audioCache = new Map<string, CachedAudio>();
 	const emojiCache = new Map();
 
 	const fetchAudio = async (content) => {
@@ -528,13 +529,12 @@
 							toast.error(`${error}`);
 						});
 
-					if (url) {
-						audioCache.set(content, new Audio(url));
-					}
+					cacheAudioResult(audioCache, content, url ? new Audio(url) : null);
 				} else if ($config.audio.tts.engine !== '') {
 					const res = await synthesizeOpenAISpeech(localStorage.token, getVoiceId(), content).catch(
 						(error) => {
 							console.error(error);
+							toast.error(`${error}`);
 							return null;
 						}
 					);
@@ -542,13 +542,16 @@
 					if (res) {
 						const blob = await res.blob();
 						const blobUrl = URL.createObjectURL(blob);
-						audioCache.set(content, new Audio(blobUrl));
+						cacheAudioResult(audioCache, content, new Audio(blobUrl));
+					} else {
+						cacheAudioResult(audioCache, content, null);
 					}
 				} else {
-					audioCache.set(content, true);
+					cacheAudioResult(audioCache, content, true);
 				}
 			} catch (error) {
 				console.error('Error synthesizing speech:', error);
+				cacheAudioResult(audioCache, content, null);
 			}
 		}
 
